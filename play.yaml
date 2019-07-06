@@ -1,0 +1,70 @@
+---
+
+- name: Install Docker
+  gather_facts: no
+  hosts: svrs
+  remote_user: sachin
+  # become: yes
+
+  vars:
+    docker_packages: ['yum-utils', 'device-mapper-persistent-data', 'lvm2', 'sysctl']
+    docker: ['docker-ce', 'docker-ce-cli ', 'containerd.io']
+    add_user: sachin
+    # sudo yum install docker-ce docker-ce-cli containerd.io
+
+
+  tasks:
+    - name: Install Dependecies
+      yum:
+        name: "{{ docker_packages }}"
+        state: latest
+      become: yes
+
+    - name: Add Docker Repo
+      get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+      become: yes
+
+    - name: Enable Docker Edge repo
+      ini_file:
+        dest: /etc/yum.repos.d/docer-ce.repo
+        section: 'docker-ce-edge'
+        option: enabled
+        value: 0
+      become: yes
+
+    - name: update yum
+      yum: 
+        name: '*'
+        state: latest
+      tags:
+      - update
+    
+    - name: Install Docker
+      package:
+        name: "{{ docker }}"
+        state: latest
+      notify:
+        - start docker
+      become: yes
+
+    - name: Add user to docker group
+      user:
+        name: "{{ add_user }}"
+        groups: docker
+        append: yes
+      become: yes
+
+    - name: Add sysctl command
+      command: sysctl net.bridge.bridge-nf-call-iptables=1
+      become: yes
+      tags:
+      - sysctl
+
+  handlers:
+    - name: start docker
+      systemd: 
+        name: docker
+        state: started
+      become: yes
