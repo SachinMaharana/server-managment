@@ -1,0 +1,117 @@
+---
+
+- hosts: svrs
+  remote_user: root
+  gather_facts: true
+ 
+  vars:
+    create_user: sachin
+    copy_local_key: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/id_rsa.pub') }}"
+    sys_packages: [ 'firewalld', 'ntp', 'wget', 'curl', 'vim' ]
+    services: [ 'https', 'http','ssh'  ]
+
+  tasks:
+    - debug: var=ansible_all_ipv4_addresses
+
+    - name: Make sure we have 'wheel' group
+      group: 
+        name: wheel
+        state: present
+      tags:
+      - wheel
+    
+    - name: Allow 'wheel' group to have passwordless sudo
+      lineinfile:
+        path: /etc/sudoers
+        state: present
+        regexp: '^%wheel'
+        line: '%wheel ALL=(ALL) NOPASSWD: ALL'
+        validate: '/usr/sbin/visudo -cf %s'
+      tags:
+      - wheel
+    
+    - name: Create New User
+      user:
+        name: "{{ create_user }}"
+        state: present
+        groups: wheel
+        append: true
+        create_home: true
+        shell: /bin/bash
+      tags:
+      - user
+
+    - name: Set Authorized key for remote user
+      authorized_key:
+        user: "{{ create_user }}"
+        state: present
+        key: "{{ copy_local_key }}"
+      tags:
+        - key
+
+    - name: Disable password auth for root
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        state: present
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin no'
+      tags:
+      - rootpasswd
+      notify:
+      - restart sshd
+
+    - name: update yum
+      yum: 
+        name: '*'
+        state: latest
+      tags:
+      - update
+
+    - name: install packages
+      yum:
+        name: "{{ sys_packages }} "
+        state: latest
+      tags:
+      - packages
+      notify:
+      - restart firewalld
+      - restart ntpd
+
+    - name: firewalld 
+      firewalld:
+        service: "{{ item }}"
+        state: enabled
+        permanent: yes
+      with_items: "{{ services }}"
+      tags:
+       - firewalld
+      notify:
+      - restart firewalld
+
+    - name: Set timezone to Asia/Kolkata
+      timezone:
+        name: Asia/Kolkata
+
+
+
+  handlers:
+    - name: restart sshd
+      service: 
+        name: sshd
+        state: reloaded
+    - name: restart firewalld
+      systemd: 
+        name: firewalld
+        state: reloaded
+    - name: restart ntpd
+      systemd: 
+        name: ntpd
+        state: restarted
+
+
+      
+
+    
+
+    
+
